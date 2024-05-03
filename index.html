@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
+  <title>targz</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: hsl(216deg 50% 93%);
+      color: hsl(216deg 50% 10%);
+      margin: 0;
+      block-size: 100dvb;
+      display: grid;
+      place-content: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid hsl(216deg 50% 75%);
+
+      & * {
+        inline-size: fit-content;
+      }
+    }
+
+    label {
+      font-size: 1.75rem;
+      font-weight: 300;
+    }
+
+    input {
+      font-size: 1.25rem;
+    }
+
+    button {
+      font-size: 1.25rem;
+      background-color: hsl(216deg 70% 80%);
+      padding: 4px 8px;
+      margin-block-start: 16px;
+      border-radius: 4px;
+      border: 1px solid hsl(216deg 75% 75%);
+      cursor: pointer;
+      transition: background-color 400ms;
+
+      &:hover,
+      &:focus {
+        transition: background-color 200ms;
+        background-color: hsl(216deg 70% 85%);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <form>
+      <label for="contents">Files</label>
+      <input type="file" id="contents" name="contents" multiple required>
+      <button>Create .tar.gz file</button>
+    </form>
+  </main>
+
+  <script type="module">
+    async function tar(files) {
+      const encoder = new TextEncoder();
+      const buffer = [];
+      for (const file of files) {
+        // Add the file header
+        const header = [
+          ...encoder.encode(file.name.padEnd(100, '\0')), // 100 bytes: File name
+          ...encoder.encode('0000777\0'), // 8 bytes: File mode (octal)
+          ...encoder.encode('0000000\0'), // 8 bytes: Owner's numeric user ID (octal)
+          ...encoder.encode('0000000\0'), // 8 bytes: Group's numeric user ID (octal)
+          ...encoder.encode(`${file.size.toString(8).padStart(11, '0')}\0`), // 12 bytes: File size in bytes (octal)
+          ...encoder.encode(`${Math.floor(file.lastModified / 1000).toString(8).padStart(11, '0')}\0`), // 12 bytes: Last modification time in numeric Unix time format (octal)
+          ...encoder.encode('        '), // 8 bytes: Checksum for header record
+          ...encoder.encode('0'), // 1 byte: Link indicator (file type)
+          ...encoder.encode('\0'.repeat(100)), // 100 bytes: Name of linked file
+          ...encoder.encode('ustar  '), // 8 bytes: magic number 'ustar  '
+          ...encoder.encode('\0'.repeat(32)), // 32 bytes: Owner user name
+          ...encoder.encode('\0'.repeat(32)), // 32 bytes: Owner group name
+          ...encoder.encode('\0'.repeat(8)), // 8 bytes: Device major number
+          ...encoder.encode('\0'.repeat(8)), // 8 bytes: Device minor number
+          ...encoder.encode('\0'.repeat(155)), // 155 bytes: Filename prefix
+          ...encoder.encode('\0'.repeat(13)), // 13 bytes: empty padding to reach 512 bytes
+        ];
+        const checksum = header.reduce((a, b) => a + b);
+        header.splice(148, 8, ...encoder.encode(`${checksum.toString(8).padStart(6, '0')}\0 `));
+        buffer.push(...header);
+
+        // Add the file data, with end padded to the nearest 512 byte chunk
+        const chunkSize = 512 * Math.ceil((file.size ? file.size : 1) / 512);
+        buffer.push(
+          ...new Uint8Array(await file.arrayBuffer()),
+          ...Array(chunkSize - file.size).fill('\0')
+        )
+      }
+
+      // End of tar is marked by 1024 null bytes
+      buffer.push(...encoder.encode('\0'.repeat(1024)));
+
+      return Uint8Array.from(buffer);
+    }
+
+    async function gzip(byteArray) {
+      const compressed = new Blob([byteArray]).stream().pipeThrough(new CompressionStream('gzip'));
+      return new Uint8Array(await new Response(compressed).arrayBuffer());
+    }
+
+    function download(byteArray) {
+      const file = new File([byteArray], `${Date.now()}.tar.gz`, { type: 'application/gzip' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(file);
+      a.download = file.name;
+      a.click();
+    }
+
+    document.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const files = e.target.elements['contents'].files;
+      tar(files).then(gzip).then(download);
+    });
+  </script>
+</body>
+
+</html>
