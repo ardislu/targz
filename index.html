@@ -74,7 +74,7 @@
         // Add the file header. Reference: https://en.wikipedia.org/wiki/Tar_(computing)#Header
         // Several fields are hardcoded because the info for these fields is not accessible from the File Web API.
         const header = [...encoder.encode(
-          file.name.padEnd(100, '\0') + // 100 bytes: File name
+          file.name.slice(-100).padEnd(100, '\0') + // 100 bytes: File name
           '0000777\0' + // 8 bytes: File mode (octal) (hardcoded)
           '0000000\0' + // 8 bytes: Owner's numeric user ID (octal) (hardcoded)
           '0000000\0' + // 8 bytes: Group's numeric user ID (octal) (hardcoded)
@@ -89,7 +89,7 @@
           '\0'.repeat(32) + // 32 bytes: Owner group name (hardcoded)
           '\0'.repeat(8) + // 8 bytes: Device major number (hardcoded)
           '\0'.repeat(8) + // 8 bytes: Device minor number (hardcoded)
-          '\0'.repeat(155) + // 155 bytes: Filename prefix (hardcoded)
+          file.name.slice(-255, -100).padEnd(155, '\0') + // 155 bytes: Filename prefix
           '\0'.repeat(12) // 12 bytes: empty padding to reach 512 bytes
         )];
         const checksum = header.reduce((a, b) => a + b);
