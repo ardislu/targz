@@ -71,26 +71,27 @@
       const encoder = new TextEncoder();
       const buffer = [];
       for (const file of files) {
-        // Add the file header
-        const header = [
-          ...encoder.encode(file.name.padEnd(100, '\0')), // 100 bytes: File name
-          ...encoder.encode('0000777\0'), // 8 bytes: File mode (octal)
-          ...encoder.encode('0000000\0'), // 8 bytes: Owner's numeric user ID (octal)
-          ...encoder.encode('0000000\0'), // 8 bytes: Group's numeric user ID (octal)
-          ...encoder.encode(`${file.size.toString(8).padStart(11, '0')}\0`), // 12 bytes: File size in bytes (octal)
-          ...encoder.encode(`${Math.floor(file.lastModified / 1000).toString(8).padStart(11, '0')}\0`), // 12 bytes: Last modification time in numeric Unix time format (octal)
-          ...encoder.encode('        '), // 8 bytes: Checksum for header record
-          ...encoder.encode('0'), // 1 byte: Link indicator (file type)
-          ...encoder.encode('\0'.repeat(100)), // 100 bytes: Name of linked file
-          ...encoder.encode('ustar\0'), // 6 bytes: magic number "ustar\0"
-          ...encoder.encode('00'), // 2 bytes: UStar version
-          ...encoder.encode('\0'.repeat(32)), // 32 bytes: Owner user name
-          ...encoder.encode('\0'.repeat(32)), // 32 bytes: Owner group name
-          ...encoder.encode('\0'.repeat(8)), // 8 bytes: Device major number
-          ...encoder.encode('\0'.repeat(8)), // 8 bytes: Device minor number
-          ...encoder.encode('\0'.repeat(155)), // 155 bytes: Filename prefix
-          ...encoder.encode('\0'.repeat(12)), // 12 bytes: empty padding to reach 512 bytes
-        ];
+        // Add the file header. Reference: https://en.wikipedia.org/wiki/Tar_(computing)#Header
+        // Several fields are hardcoded because the info for these fields is not accessible from the File Web API.
+        const header = [...encoder.encode(
+          file.name.padEnd(100, '\0') + // 100 bytes: File name
+          '0000777\0' + // 8 bytes: File mode (octal) (hardcoded)
+          '0000000\0' + // 8 bytes: Owner's numeric user ID (octal) (hardcoded)
+          '0000000\0' + // 8 bytes: Group's numeric user ID (octal) (hardcoded)
+          `${file.size.toString(8).padStart(11, '0')}\0` + // 12 bytes: File size in bytes (octal)
+          `${Math.floor(file.lastModified / 1000).toString(8).padStart(11, '0')}\0` + // 12 bytes: Last modification time in numeric Unix time format (octal)
+          '        ' + // 8 bytes: Checksum for header record (octal) (MUST be 8 spaces for calculation, will be updated after)
+          '0' + // 1 byte: Link indicator (file type) (hardcoded)
+          '\0'.repeat(100) + // 100 bytes: Name of linked file (hardcoded)
+          'ustar\0' + // 6 bytes: magic number "ustar\0"
+          '00' + // 2 bytes: UStar version
+          '\0'.repeat(32) + // 32 bytes: Owner user name (hardcoded)
+          '\0'.repeat(32) + // 32 bytes: Owner group name (hardcoded)
+          '\0'.repeat(8) + // 8 bytes: Device major number (hardcoded)
+          '\0'.repeat(8) + // 8 bytes: Device minor number (hardcoded)
+          '\0'.repeat(155) + // 155 bytes: Filename prefix (hardcoded)
+          '\0'.repeat(12) // 12 bytes: empty padding to reach 512 bytes
+        )];
         const checksum = header.reduce((a, b) => a + b);
         header.splice(148, 8, ...encoder.encode(`${checksum.toString(8).padStart(6, '0')}\0 `));
         buffer.push(...header);
@@ -99,12 +100,12 @@
         const chunkSize = 512 * Math.ceil((file.size ? file.size : 1) / 512);
         buffer.push(
           ...new Uint8Array(await file.arrayBuffer()),
-          ...Array(chunkSize - file.size).fill('\0')
+          ...'\0'.repeat(chunkSize - file.size)
         )
       }
 
       // End of tar is marked by 1024 null bytes
-      buffer.push(...encoder.encode('\0'.repeat(1024)));
+      buffer.push(...'\0'.repeat(1024));
 
       return Uint8Array.from(buffer);
     }
