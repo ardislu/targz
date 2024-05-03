@@ -82,13 +82,14 @@
           ...encoder.encode('        '), // 8 bytes: Checksum for header record
           ...encoder.encode('0'), // 1 byte: Link indicator (file type)
           ...encoder.encode('\0'.repeat(100)), // 100 bytes: Name of linked file
-          ...encoder.encode('ustar  '), // 8 bytes: magic number 'ustar  '
+          ...encoder.encode('ustar\0'), // 6 bytes: magic number "ustar\0"
+          ...encoder.encode('00'), // 2 bytes: UStar version
           ...encoder.encode('\0'.repeat(32)), // 32 bytes: Owner user name
           ...encoder.encode('\0'.repeat(32)), // 32 bytes: Owner group name
           ...encoder.encode('\0'.repeat(8)), // 8 bytes: Device major number
           ...encoder.encode('\0'.repeat(8)), // 8 bytes: Device minor number
           ...encoder.encode('\0'.repeat(155)), // 155 bytes: Filename prefix
-          ...encoder.encode('\0'.repeat(13)), // 13 bytes: empty padding to reach 512 bytes
+          ...encoder.encode('\0'.repeat(12)), // 12 bytes: empty padding to reach 512 bytes
         ];
         const checksum = header.reduce((a, b) => a + b);
         header.splice(148, 8, ...encoder.encode(`${checksum.toString(8).padStart(6, '0')}\0 `));
