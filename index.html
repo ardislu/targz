@@ -97,7 +97,7 @@
         buffer.push(...header);
 
         // Add the file data, with end padded to the nearest 512 byte chunk
-        const chunkSize = 512 * Math.ceil((file.size ? file.size : 1) / 512);
+        const chunkSize = 512 * Math.ceil(file.size / 512);
         buffer.push(
           ...new Uint8Array(await file.arrayBuffer()),
           ...'\0'.repeat(chunkSize - file.size)
