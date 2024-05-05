@@ -47,11 +47,33 @@
       border: 1px solid hsl(216deg 75% 75%);
       cursor: pointer;
       transition: background-color 400ms;
+      position: relative;
 
       &:hover,
       &:focus {
         transition: background-color 200ms;
         background-color: hsl(216deg 70% 85%);
+      }
+
+      &::after {
+        position: absolute;
+        line-height: 0;
+        inset-inline-start: calc(100% + 8px);
+        inset-block-start: 50%;
+      }
+
+      &[data-loading] {
+        &::after {
+          content: '⏳';
+          content: '⏳' / 'Loading';
+        }
+      }
+
+      &[data-complete] {
+        &::after {
+          content: '✅';
+          content: '✅' / 'Complete';
+        }
       }
     }
   </style>
@@ -134,10 +156,14 @@
       }).then(h => h.createWritable());
 
       // Stream to destination file
+      e.submitter.removeAttribute('data-complete');
+      e.submitter.setAttribute('data-loading', '');
       const files = e.target.elements['contents'].files;
-      tar(files)
+      await tar(files)
         .pipeThrough(new CompressionStream('gzip'))
         .pipeTo(destination);
+      e.submitter.removeAttribute('data-loading');
+      e.submitter.setAttribute('data-complete', '');
     });
   </script>
 </body>
