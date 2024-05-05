@@ -67,66 +67,77 @@
   </main>
 
   <script type="module">
-    async function tar(files) {
-      const encoder = new TextEncoder();
-      const buffer = [];
-      for (const file of files) {
-        // Add the file header. Reference: https://en.wikipedia.org/wiki/Tar_(computing)#Header
-        // Several fields are hardcoded because the info for these fields is not accessible from the File Web API.
-        const header = [...encoder.encode(
-          file.name.slice(-100).padEnd(100, '\0') + // 100 bytes: File name
-          '0000777\0' + // 8 bytes: File mode (octal) (hardcoded)
-          '0000000\0' + // 8 bytes: Owner's numeric user ID (octal) (hardcoded)
-          '0000000\0' + // 8 bytes: Group's numeric user ID (octal) (hardcoded)
-          `${file.size.toString(8).padStart(11, '0')}\0` + // 12 bytes: File size in bytes (octal)
-          `${Math.floor(file.lastModified / 1000).toString(8).padStart(11, '0')}\0` + // 12 bytes: Last modification time in numeric Unix time format (octal)
-          '        ' + // 8 bytes: Checksum for header record (octal) (MUST be 8 spaces for calculation, will be updated after)
-          '0' + // 1 byte: Link indicator (file type) (hardcoded)
-          '\0'.repeat(100) + // 100 bytes: Name of linked file (hardcoded)
-          'ustar\0' + // 6 bytes: magic number "ustar\0"
-          '00' + // 2 bytes: UStar version
-          '\0'.repeat(32) + // 32 bytes: Owner user name (hardcoded)
-          '\0'.repeat(32) + // 32 bytes: Owner group name (hardcoded)
-          '\0'.repeat(8) + // 8 bytes: Device major number (hardcoded)
-          '\0'.repeat(8) + // 8 bytes: Device minor number (hardcoded)
-          file.name.slice(-255, -100).padEnd(155, '\0') + // 155 bytes: Filename prefix
-          '\0'.repeat(12) // 12 bytes: empty padding to reach 512 bytes
-        )];
-        const checksum = header.reduce((a, b) => a + b);
-        header.splice(148, 8, ...encoder.encode(`${checksum.toString(8).padStart(6, '0')}\0 `));
-        buffer.push(...header);
+    function tar(files) {
+      return new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          for (const file of files) {
+            // Enqueue the file header. Reference: https://en.wikipedia.org/wiki/Tar_(computing)#Header
+            // Several fields are hardcoded because the info for these fields is not accessible from the File Web API.
+            const header = encoder.encode(
+              file.name.slice(-100).padEnd(100, '\0') + // 100 bytes: File name
+              '0000777\0' + // 8 bytes: File mode (octal) (hardcoded)
+              '0000000\0' + // 8 bytes: Owner's numeric user ID (octal) (hardcoded)
+              '0000000\0' + // 8 bytes: Group's numeric user ID (octal) (hardcoded)
+              `${file.size.toString(8).padStart(11, '0')}\0` + // 12 bytes: File size in bytes (octal)
+              `${Math.floor(file.lastModified / 1000).toString(8).padStart(11, '0')}\0` + // 12 bytes: Last modification time in numeric Unix time format (octal)
+              '        ' + // 8 bytes: Checksum for header record (octal) (MUST be 8 spaces for calculation, will be updated after)
+              '0' + // 1 byte: Link indicator (file type) (hardcoded)
+              '\0'.repeat(100) + // 100 bytes: Name of linked file (hardcoded)
+              'ustar\0' + // 6 bytes: magic number "ustar\0"
+              '00' + // 2 bytes: UStar version
+              '\0'.repeat(32) + // 32 bytes: Owner user name (hardcoded)
+              '\0'.repeat(32) + // 32 bytes: Owner group name (hardcoded)
+              '\0'.repeat(8) + // 8 bytes: Device major number (hardcoded)
+              '\0'.repeat(8) + // 8 bytes: Device minor number (hardcoded)
+              file.name.slice(-255, -100).padEnd(155, '\0') + // 155 bytes: Filename prefix
+              '\0'.repeat(12) // 12 bytes: empty padding to reach 512 bytes
+            );
+            const checksum = header.reduce((a, b) => a + b);
+            header.set(encoder.encode(`${checksum.toString(8).padStart(6, '0')}\0 `), 148);
+            controller.enqueue(header);
 
-        // Add the file data, with end padded to the nearest 512 byte chunk
-        const chunkSize = 512 * Math.ceil(file.size / 512);
-        buffer.push(
-          ...new Uint8Array(await file.arrayBuffer()),
-          ...'\0'.repeat(chunkSize - file.size)
-        )
-      }
+            // Enqueue the file data, with last chunk padded to 512 bytes
+            const reader = file.stream().getReader({ mode: 'byob' });
+            while (true) {
+              const chunk = new Uint8Array(512);
+              const { done, value } = await reader.read(chunk);
+              if (done) { // Final value will be empty, skip it
+                break;
+              }
+              controller.enqueue(new Uint8Array(value.buffer)); // Original view is detached, must instantiate new view on buffer
+            }
+          }
 
-      // End of tar is marked by 1024 null bytes
-      buffer.push(...'\0'.repeat(1024));
-
-      return Uint8Array.from(buffer);
+          // End of tar is marked by 1024 null bytes
+          controller.enqueue(new Uint8Array(1024));
+          controller.close();
+        },
+        type: 'bytes',
+        autoAllocateChunkSize: 512
+      }, {
+        queueingStrategy: new ByteLengthQueuingStrategy({ highWaterMark: 4096 })
+      });
     }
 
-    async function gzip(byteArray) {
-      const compressed = new Blob([byteArray]).stream().pipeThrough(new CompressionStream('gzip'));
-      return new Uint8Array(await new Response(compressed).arrayBuffer());
-    }
-
-    function download(byteArray) {
-      const file = new File([byteArray], `${Date.now()}.tar.gz`, { type: 'application/gzip' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(file);
-      a.download = file.name;
-      a.click();
-    }
-
-    document.querySelector('form').addEventListener('submit', e => {
+    document.querySelector('form').addEventListener('submit', async e => {
       e.preventDefault();
+
+      // Setup destination file
+      const id = localStorage.getItem('id') ?? crypto.randomUUID().replaceAll('-', ''); // Maximum 32 characters
+      localStorage.setItem('id', id);
+      const destination = await showSaveFilePicker({
+        id,
+        startIn: 'downloads',
+        suggestedName: `${Date.now()}.tar.gz`,
+        types: [{ accept: { 'application/gzip': ['.tar.gz'] } }]
+      }).then(h => h.createWritable());
+
+      // Stream to destination file
       const files = e.target.elements['contents'].files;
-      tar(files).then(gzip).then(download);
+      tar(files)
+        .pipeThrough(new CompressionStream('gzip'))
+        .pipeTo(destination);
     });
   </script>
 </body>
