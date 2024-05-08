@@ -120,14 +120,16 @@
             controller.enqueue(header);
 
             // Enqueue the file data, with last chunk padded to 512 bytes
-            const reader = file.stream().getReader({ mode: 'byob' });
+            const reader = file.stream().getReader();
             while (true) {
-              const chunk = new Uint8Array(512);
-              const { done, value } = await reader.read(chunk);
-              if (done) { // Final value will be empty, skip it
+              const { done, value } = await reader.read();
+              if (done) {
+                if (file.size > 0) {
+                  controller.enqueue(new Uint8Array(512 - (file.size % 512)));
+                }
                 break;
               }
-              controller.enqueue(new Uint8Array(value.buffer)); // Original view is detached, must instantiate new view on buffer
+              controller.enqueue(new Uint8Array(value.buffer));
             }
           }
 
