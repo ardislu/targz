@@ -136,7 +136,8 @@
           // End of tar is marked by 1024 null bytes
           controller.enqueue(new Uint8Array(1024));
           controller.close();
-        }
+        },
+        type: 'bytes'
       });
     }
 
