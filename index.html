@@ -76,6 +76,19 @@
         }
       }
     }
+
+    a {
+      display: flex;
+      justify-content: center;
+      margin-block: 8px;
+      font-weight: 700;
+      text-decoration: none;
+
+      &:hover,
+      &:focus {
+        text-decoration: underline 2px;
+      }
+    }
   </style>
 </head>
 
@@ -86,6 +99,7 @@
       <input type="file" id="contents" name="contents" multiple required>
       <button>Create .tar.gz file</button>
     </form>
+    <a href="https://github.com/ardislu/targz">GitHub</a>
   </main>
 
   <script type="module">
