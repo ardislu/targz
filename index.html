@@ -115,7 +115,7 @@
             // Enqueue the file header. Reference: https://en.wikipedia.org/wiki/Tar_(computing)#Header
             // Several fields are hardcoded because the info for these fields is not accessible from the File Web API.
             const header = encoder.encode(
-              file.name.slice(-100).padEnd(100, '\0') + // 100 bytes: File name
+              '\0'.repeat(100) + // 100 bytes: File name
               '0000777\0' + // 8 bytes: File mode (octal) (hardcoded)
               '0000000\0' + // 8 bytes: Owner's numeric user ID (octal) (hardcoded)
               '0000000\0' + // 8 bytes: Group's numeric user ID (octal) (hardcoded)
@@ -130,9 +130,12 @@
               '\0'.repeat(32) + // 32 bytes: Owner group name (hardcoded)
               '\0'.repeat(8) + // 8 bytes: Device major number (hardcoded)
               '\0'.repeat(8) + // 8 bytes: Device minor number (hardcoded)
-              file.name.slice(-255, -100).padEnd(155, '\0') + // 155 bytes: Filename prefix
+              '\0'.repeat(155) + // 155 bytes: Filename prefix
               '\0'.repeat(12) // 12 bytes: empty padding to reach 512 bytes
             );
+            const fileNameBytes = encoder.encode(file.name);
+            header.set(fileNameBytes.slice(-100)); // First 100 bytes of file name
+            header.set(fileNameBytes.slice(-255, -100), 345); // Bytes 101-255 of file name (any excess is cut off)
             const checksum = header.reduce((a, b) => a + b);
             header.set(encoder.encode(`${checksum.toString(8).padStart(6, '0')}\0 `), 148);
             controller.enqueue(header);
