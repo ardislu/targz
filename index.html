@@ -185,6 +185,13 @@
       e.submitter.removeAttribute('data-loading');
       e.submitter.setAttribute('data-complete', '');
     });
+
+    // Enable drag and drop files
+    window.addEventListener('dragover', e => e.preventDefault());
+    window.addEventListener('drop', e => {
+      e.preventDefault();
+      document.querySelector('input').files = e.dataTransfer.files;
+    });
   </script>
 </body>
 
